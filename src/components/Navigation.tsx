@@ -8,7 +8,9 @@ import {
   DoorOpen, 
   UsersRound,
   Calendar,
-  Settings
+  Settings,
+  CalendarClock,
+  BarChart3
 } from "lucide-react";
 
 const navItems = [
@@ -18,7 +20,10 @@ const navItems = [
   { to: "/subjects", label: "Subjects", icon: BookOpen },
   { to: "/rooms", label: "Rooms", icon: DoorOpen },
   { to: "/sections", label: "Sections", icon: UsersRound },
+  { to: "/availability", label: "Availability", icon: CalendarClock },
+  { to: "/preferences", label: "Preferences", icon: Settings },
   { to: "/generate", label: "Generate", icon: Calendar },
+  { to: "/statistics", label: "Statistics", icon: BarChart3 },
 ];
 
 export const Navigation = () => {

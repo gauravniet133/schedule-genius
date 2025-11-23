@@ -4,9 +4,10 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
-import { Calendar, AlertCircle, CheckCircle, Loader2, Download, Eye } from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Calendar, AlertCircle, CheckCircle, Loader2, Download, Eye, Users, DoorOpen, BookOpen } from "lucide-react";
 import { storage } from "@/lib/storage";
-import { TimetableGenerator } from "@/lib/timetableGenerator";
+import { EnhancedTimetableGenerator } from "@/lib/enhancedTimetableGenerator";
 import { GeneratedTimetable } from "@/types/timetable";
 import { useToast } from "@/hooks/use-toast";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -15,6 +16,7 @@ const Generate = () => {
   const [isGenerating, setIsGenerating] = useState(false);
   const [timetables, setTimetables] = useState<GeneratedTimetable[]>([]);
   const [selectedTimetable, setSelectedTimetable] = useState<GeneratedTimetable | null>(null);
+  const [viewMode, setViewMode] = useState<'section' | 'teacher' | 'room'>('section');
   const { toast } = useToast();
 
   useEffect(() => {
@@ -40,7 +42,17 @@ const Generate = () => {
 
     // Simulate generation delay for better UX
     setTimeout(() => {
-      const generator = new TimetableGenerator(teachers, subjects, rooms, sections);
+      const breaks = storage.getBreaks();
+      const preferences = storage.getPreferences();
+      
+      const generator = new EnhancedTimetableGenerator(
+        teachers, 
+        subjects, 
+        rooms, 
+        sections, 
+        breaks, 
+        preferences
+      );
       const result = generator.generate();
       
       storage.saveTimetable(result);
@@ -239,14 +251,33 @@ const Generate = () => {
       </main>
 
       <Dialog open={!!selectedTimetable} onOpenChange={() => setSelectedTimetable(null)}>
-        <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-7xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Timetable View - {selectedTimetable?.name}</DialogTitle>
+            <DialogTitle className="flex items-center justify-between">
+              <span>Timetable View - {selectedTimetable?.name}</span>
+              <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as typeof viewMode)}>
+                <TabsList>
+                  <TabsTrigger value="section" className="gap-1">
+                    <Users className="w-4 h-4" />
+                    Sections
+                  </TabsTrigger>
+                  <TabsTrigger value="teacher" className="gap-1">
+                    <BookOpen className="w-4 h-4" />
+                    Teachers
+                  </TabsTrigger>
+                  <TabsTrigger value="room" className="gap-1">
+                    <DoorOpen className="w-4 h-4" />
+                    Rooms
+                  </TabsTrigger>
+                </TabsList>
+              </Tabs>
+            </DialogTitle>
           </DialogHeader>
           
           {selectedTimetable && (
             <div className="space-y-6">
-              {storage.getSections().map(section => {
+              {/* Section View */}
+              {viewMode === 'section' && storage.getSections().map(section => {
                 const sectionEntries = selectedTimetable.entries.filter(e => e.sectionId === section.id);
                 if (sectionEntries.length === 0) return null;
 
@@ -254,26 +285,26 @@ const Generate = () => {
                   <div key={section.id} className="space-y-2">
                     <h3 className="text-lg font-semibold">{section.name}</h3>
                     <div className="overflow-x-auto">
-                      <table className="w-full border-collapse">
+                      <table className="w-full border-collapse text-sm">
                         <thead>
                           <tr className="bg-muted">
-                            <th className="border border-border p-2 text-left">Time</th>
+                            <th className="border border-border p-2 text-left font-semibold">Time</th>
                             {days.map(day => (
-                              <th key={day} className="border border-border p-2 text-center">{day}</th>
+                              <th key={day} className="border border-border p-2 text-center font-semibold">{day}</th>
                             ))}
                           </tr>
                         </thead>
                         <tbody>
                           {timeSlots.map(time => (
                             <tr key={time}>
-                              <td className="border border-border p-2 font-medium">{time}</td>
+                              <td className="border border-border p-2 font-medium bg-muted/30">{time}</td>
                               {days.map(day => {
                                 const entry = sectionEntries.find(
                                   e => e.timeSlot.day === day && e.timeSlot.startTime === time
                                 );
                                 
                                 if (!entry) {
-                                  return <td key={day} className="border border-border p-2 bg-muted/30"></td>;
+                                  return <td key={day} className="border border-border p-2 bg-muted/20"></td>;
                                 }
 
                                 const subject = storage.getSubjects().find(s => s.id === entry.subjectId);
@@ -282,10 +313,118 @@ const Generate = () => {
 
                                 return (
                                   <td key={day} className="border border-border p-2 bg-primary/5">
-                                    <div className="text-sm">
+                                    <div className="text-xs">
                                       <p className="font-semibold">{subject?.name}</p>
-                                      <p className="text-xs text-muted-foreground">{teacher?.name}</p>
-                                      <p className="text-xs text-muted-foreground">{room?.name}</p>
+                                      <p className="text-muted-foreground">{teacher?.name}</p>
+                                      <p className="text-muted-foreground">{room?.name}</p>
+                                    </div>
+                                  </td>
+                                );
+                              })}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                );
+              })}
+
+              {/* Teacher View */}
+              {viewMode === 'teacher' && storage.getTeachers().map(teacher => {
+                const teacherEntries = selectedTimetable.entries.filter(e => e.teacherId === teacher.id);
+                if (teacherEntries.length === 0) return null;
+
+                return (
+                  <div key={teacher.id} className="space-y-2">
+                    <h3 className="text-lg font-semibold">{teacher.name}</h3>
+                    <div className="overflow-x-auto">
+                      <table className="w-full border-collapse text-sm">
+                        <thead>
+                          <tr className="bg-muted">
+                            <th className="border border-border p-2 text-left font-semibold">Time</th>
+                            {days.map(day => (
+                              <th key={day} className="border border-border p-2 text-center font-semibold">{day}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {timeSlots.map(time => (
+                            <tr key={time}>
+                              <td className="border border-border p-2 font-medium bg-muted/30">{time}</td>
+                              {days.map(day => {
+                                const entry = teacherEntries.find(
+                                  e => e.timeSlot.day === day && e.timeSlot.startTime === time
+                                );
+                                
+                                if (!entry) {
+                                  return <td key={day} className="border border-border p-2 bg-muted/20"></td>;
+                                }
+
+                                const subject = storage.getSubjects().find(s => s.id === entry.subjectId);
+                                const section = storage.getSections().find(s => s.id === entry.sectionId);
+                                const room = storage.getRooms().find(r => r.id === entry.roomId);
+
+                                return (
+                                  <td key={day} className="border border-border p-2 bg-accent/5">
+                                    <div className="text-xs">
+                                      <p className="font-semibold">{subject?.name}</p>
+                                      <p className="text-muted-foreground">{section?.name}</p>
+                                      <p className="text-muted-foreground">{room?.name}</p>
+                                    </div>
+                                  </td>
+                                );
+                              })}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                );
+              })}
+
+              {/* Room View */}
+              {viewMode === 'room' && storage.getRooms().map(room => {
+                const roomEntries = selectedTimetable.entries.filter(e => e.roomId === room.id);
+                if (roomEntries.length === 0) return null;
+
+                return (
+                  <div key={room.id} className="space-y-2">
+                    <h3 className="text-lg font-semibold">{room.name} ({room.type})</h3>
+                    <div className="overflow-x-auto">
+                      <table className="w-full border-collapse text-sm">
+                        <thead>
+                          <tr className="bg-muted">
+                            <th className="border border-border p-2 text-left font-semibold">Time</th>
+                            {days.map(day => (
+                              <th key={day} className="border border-border p-2 text-center font-semibold">{day}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {timeSlots.map(time => (
+                            <tr key={time}>
+                              <td className="border border-border p-2 font-medium bg-muted/30">{time}</td>
+                              {days.map(day => {
+                                const entry = roomEntries.find(
+                                  e => e.timeSlot.day === day && e.timeSlot.startTime === time
+                                );
+                                
+                                if (!entry) {
+                                  return <td key={day} className="border border-border p-2 bg-green-50 dark:bg-green-900/10"></td>;
+                                }
+
+                                const subject = storage.getSubjects().find(s => s.id === entry.subjectId);
+                                const section = storage.getSections().find(s => s.id === entry.sectionId);
+                                const teacher = storage.getTeachers().find(t => t.id === entry.teacherId);
+
+                                return (
+                                  <td key={day} className="border border-border p-2 bg-red-50 dark:bg-red-900/10">
+                                    <div className="text-xs">
+                                      <p className="font-semibold">{subject?.name}</p>
+                                      <p className="text-muted-foreground">{section?.name}</p>
+                                      <p className="text-muted-foreground">{teacher?.name}</p>
                                     </div>
                                   </td>
                                 );
