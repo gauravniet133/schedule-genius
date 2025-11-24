@@ -10,10 +10,15 @@ import {
   Calendar,
   Settings,
   CalendarClock,
-  BarChart3
+  BarChart3,
+  GraduationCap,
+  LogOut
 } from "lucide-react";
+import { useAuth } from "@/hooks/useAuth";
+import { Button } from "./ui/button";
+import { Avatar, AvatarFallback } from "./ui/avatar";
 
-const navItems = [
+const adminNavItems = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard },
   { to: "/departments", label: "Departments", icon: Building2 },
   { to: "/teachers", label: "Teachers", icon: Users },
@@ -26,8 +31,16 @@ const navItems = [
   { to: "/statistics", label: "Statistics", icon: BarChart3 },
 ];
 
+const studentNavItems = [
+  { to: "/", label: "Dashboard", icon: LayoutDashboard },
+  { to: "/student", label: "My Schedule", icon: GraduationCap },
+];
+
 export const Navigation = () => {
   const location = useLocation();
+  const { user, signOut, isAdmin } = useAuth();
+
+  const navItems = isAdmin ? adminNavItems : studentNavItems;
 
   return (
     <nav className="border-b border-border bg-card shadow-sm">
@@ -65,9 +78,22 @@ export const Navigation = () => {
             </div>
           </div>
           
-          <button className="p-2 rounded-lg hover:bg-muted transition-colors">
-            <Settings className="w-5 h-5 text-muted-foreground" />
-          </button>
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
+              <Avatar className="h-8 w-8">
+                <AvatarFallback className="text-xs bg-primary text-primary-foreground">
+                  {user?.email?.[0].toUpperCase()}
+                </AvatarFallback>
+              </Avatar>
+              <span className="text-sm text-muted-foreground hidden sm:inline max-w-[150px] truncate">
+                {user?.email}
+              </span>
+            </div>
+            <Button variant="ghost" size="sm" onClick={signOut}>
+              <LogOut className="w-4 h-4" />
+              <span className="ml-2 hidden sm:inline">Sign Out</span>
+            </Button>
+          </div>
         </div>
       </div>
     </nav>
