@@ -3,55 +3,105 @@ import { Navigation } from "@/components/Navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Building2, Plus, Trash2 } from "lucide-react";
-import { storage } from "@/lib/storage";
-import { Department } from "@/types/timetable";
+import { Building2, Plus, Trash2, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/integrations/supabase/client";
+
+interface Department {
+  id: string;
+  name: string;
+  code: string;
+}
 
 const Departments = () => {
   const [departments, setDepartments] = useState<Department[]>([]);
   const [isOpen, setIsOpen] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [formData, setFormData] = useState({ name: "", code: "" });
   const { toast } = useToast();
 
   useEffect(() => {
-    setDepartments(storage.getDepartments());
+    loadDepartments();
   }, []);
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    const newDepartment: Department = {
-      id: crypto.randomUUID(),
-      name: formData.name,
-      code: formData.code,
-    };
+  const loadDepartments = async () => {
+    try {
+      const { data, error } = await supabase
+        .from("departments")
+        .select("*")
+        .order("name");
 
-    const updated = [...departments, newDepartment];
-    setDepartments(updated);
-    storage.saveDepartments(updated);
-    
-    toast({
-      title: "Department added",
-      description: `${formData.name} has been added successfully.`,
-    });
-
-    setFormData({ name: "", code: "" });
-    setIsOpen(false);
+      if (error) throw error;
+      setDepartments(data || []);
+    } catch (error: any) {
+      toast({
+        variant: "destructive",
+        title: "Error loading departments",
+        description: error.message,
+      });
+    } finally {
+      setIsLoading(false);
+    }
   };
 
-  const handleDelete = (id: string) => {
-    const updated = departments.filter(d => d.id !== id);
-    setDepartments(updated);
-    storage.saveDepartments(updated);
-    
-    toast({
-      title: "Department deleted",
-      description: "The department has been removed.",
-      variant: "destructive",
-    });
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSubmitting(true);
+
+    try {
+      const { error } = await supabase
+        .from("departments")
+        .insert([{
+          name: formData.name,
+          code: formData.code,
+        }]);
+
+      if (error) throw error;
+
+      toast({
+        title: "Department added",
+        description: `${formData.name} has been added successfully.`,
+      });
+
+      setFormData({ name: "", code: "" });
+      setIsOpen(false);
+      loadDepartments();
+    } catch (error: any) {
+      toast({
+        variant: "destructive",
+        title: "Error adding department",
+        description: error.message,
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    try {
+      const { error } = await supabase
+        .from("departments")
+        .delete()
+        .eq("id", id);
+
+      if (error) throw error;
+
+      toast({
+        title: "Department deleted",
+        description: "The department has been removed.",
+      });
+
+      loadDepartments();
+    } catch (error: any) {
+      toast({
+        variant: "destructive",
+        title: "Error deleting department",
+        description: error.message,
+      });
+    }
   };
 
   return (
@@ -105,39 +155,54 @@ const Departments = () => {
                     required
                   />
                 </div>
-                <Button type="submit" className="w-full">Add Department</Button>
+                <Button type="submit" className="w-full" disabled={isSubmitting}>
+                  {isSubmitting ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Adding...
+                    </>
+                  ) : (
+                    "Add Department"
+                  )}
+                </Button>
               </form>
             </DialogContent>
           </Dialog>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {departments.map((dept) => (
-            <Card key={dept.id} className="shadow-card hover:shadow-elevated transition-all">
-              <CardHeader>
-                <CardTitle className="flex items-center justify-between">
-                  <span>{dept.name}</span>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => handleDelete(dept.id)}
-                    className="text-destructive hover:text-destructive hover:bg-destructive/10"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </Button>
-                </CardTitle>
-                <CardDescription>Code: {dept.code}</CardDescription>
-              </CardHeader>
-            </Card>
-          ))}
+        {isLoading ? (
+          <div className="flex justify-center items-center py-12">
+            <Loader2 className="w-8 h-8 animate-spin text-primary" />
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {departments.map((dept) => (
+              <Card key={dept.id} className="shadow-card hover:shadow-elevated transition-all">
+                <CardHeader>
+                  <CardTitle className="flex items-center justify-between">
+                    <span>{dept.name}</span>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => handleDelete(dept.id)}
+                      className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </Button>
+                  </CardTitle>
+                  <CardDescription>Code: {dept.code}</CardDescription>
+                </CardHeader>
+              </Card>
+            ))}
 
-          {departments.length === 0 && (
-            <Card className="col-span-full p-12 text-center border-dashed">
-              <Building2 className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
-              <p className="text-muted-foreground">No departments yet. Add your first department to get started.</p>
-            </Card>
-          )}
-        </div>
+            {departments.length === 0 && (
+              <Card className="col-span-full p-12 text-center border-dashed">
+                <Building2 className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
+                <p className="text-muted-foreground">No departments yet. Add your first department to get started.</p>
+              </Card>
+            )}
+          </div>
+        )}
       </main>
     </div>
   );
