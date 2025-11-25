@@ -5,12 +5,14 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Calendar, AlertCircle, CheckCircle, Loader2, Download, Eye, Users, DoorOpen, BookOpen } from "lucide-react";
+import { Calendar, AlertCircle, CheckCircle, Loader2, Download, Eye, Users, DoorOpen, BookOpen, FileText, FileSpreadsheet } from "lucide-react";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { storage } from "@/lib/storage";
 import { EnhancedTimetableGenerator } from "@/lib/enhancedTimetableGenerator";
 import { GeneratedTimetable } from "@/types/timetable";
 import { useToast } from "@/hooks/use-toast";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { TimetablePDFExporter } from "@/lib/pdfExport";
 
 const Generate = () => {
   const [isGenerating, setIsGenerating] = useState(false);
@@ -119,6 +121,23 @@ const Generate = () => {
     });
   };
 
+  const exportToPDF = (timetable: GeneratedTimetable, layout: 'section' | 'teacher' | 'room') => {
+    const department = storage.getDepartments().find(d => d.id === timetable.departmentId);
+    const exporter = new TimetablePDFExporter(timetable, {
+      includeHeader: true,
+      includeFooter: true,
+      departmentName: department?.name || 'Department',
+      layout: layout
+    });
+    
+    exporter.export();
+
+    toast({
+      title: "PDF Export successful",
+      description: `Timetable exported as ${layout} view`,
+    });
+  };
+
   const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
   const timeSlots = [
     '09:00', '10:00', '11:00', '12:00', '14:00', '15:00', '16:00'
@@ -204,14 +223,36 @@ const Generate = () => {
                           <Eye className="w-4 h-4 mr-1" />
                           View
                         </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => exportToCSV(timetable)}
-                        >
-                          <Download className="w-4 h-4 mr-1" />
-                          Export
-                        </Button>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                            >
+                              <Download className="w-4 h-4 mr-1" />
+                              Export
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem onClick={() => exportToCSV(timetable)}>
+                              <FileSpreadsheet className="w-4 h-4 mr-2" />
+                              Export as CSV
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem onClick={() => exportToPDF(timetable, 'section')}>
+                              <FileText className="w-4 h-4 mr-2" />
+                              PDF - Section View
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => exportToPDF(timetable, 'teacher')}>
+                              <FileText className="w-4 h-4 mr-2" />
+                              PDF - Teacher View
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => exportToPDF(timetable, 'room')}>
+                              <FileText className="w-4 h-4 mr-2" />
+                              PDF - Room View
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                         <Button
                           variant="ghost"
                           size="sm"
