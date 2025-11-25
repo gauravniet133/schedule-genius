@@ -6,15 +6,30 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { DoorOpen, Plus, Trash2, Users } from "lucide-react";
-import { storage } from "@/lib/storage";
-import { Room, Department } from "@/types/timetable";
+import { DoorOpen, Plus, Trash2, Users, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/integrations/supabase/client";
+
+interface Department {
+  id: string;
+  name: string;
+}
+
+interface Room {
+  id: string;
+  name: string;
+  type: 'classroom' | 'lab' | 'auditorium';
+  capacity: number;
+  department_id: string | null;
+  departments: { name: string } | null;
+}
 
 const Rooms = () => {
   const [rooms, setRooms] = useState<Room[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
   const [isOpen, setIsOpen] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [formData, setFormData] = useState({ 
     name: "", 
     type: "classroom" as Room['type'],
@@ -24,54 +39,100 @@ const Rooms = () => {
   const { toast } = useToast();
 
   useEffect(() => {
-    setRooms(storage.getRooms());
-    setDepartments(storage.getDepartments());
+    loadData();
   }, []);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const loadData = async () => {
+    try {
+      const [roomsRes, departmentsRes] = await Promise.all([
+        supabase
+          .from("rooms")
+          .select("*, departments(name)")
+          .order("name"),
+        supabase
+          .from("departments")
+          .select("id, name")
+          .order("name")
+      ]);
+
+      if (roomsRes.error) throw roomsRes.error;
+      if (departmentsRes.error) throw departmentsRes.error;
+
+      setRooms(roomsRes.data || []);
+      setDepartments(departmentsRes.data || []);
+    } catch (error: any) {
+      toast({
+        variant: "destructive",
+        title: "Error loading data",
+        description: error.message,
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    const newRoom: Room = {
-      id: crypto.randomUUID(),
-      name: formData.name,
-      type: formData.type,
-      capacity: formData.capacity,
-      departmentId: formData.departmentId || undefined,
-    };
+    setIsSubmitting(true);
 
-    const updated = [...rooms, newRoom];
-    setRooms(updated);
-    storage.saveRooms(updated);
-    
-    toast({
-      title: "Room added",
-      description: `${formData.name} has been added successfully.`,
-    });
+    try {
+      const { error } = await supabase
+        .from("rooms")
+        .insert([{
+          name: formData.name,
+          type: formData.type,
+          capacity: formData.capacity,
+          department_id: formData.departmentId || null,
+        }]);
 
-    setFormData({ 
-      name: "", 
-      type: "classroom",
-      capacity: 30,
-      departmentId: ""
-    });
-    setIsOpen(false);
+      if (error) throw error;
+
+      toast({
+        title: "Room added",
+        description: `${formData.name} has been added successfully.`,
+      });
+
+      setFormData({ 
+        name: "", 
+        type: "classroom",
+        capacity: 30,
+        departmentId: ""
+      });
+      setIsOpen(false);
+      loadData();
+    } catch (error: any) {
+      toast({
+        variant: "destructive",
+        title: "Error adding room",
+        description: error.message,
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
-  const handleDelete = (id: string) => {
-    const updated = rooms.filter(r => r.id !== id);
-    setRooms(updated);
-    storage.saveRooms(updated);
-    
-    toast({
-      title: "Room deleted",
-      description: "The room has been removed.",
-      variant: "destructive",
-    });
-  };
+  const handleDelete = async (id: string) => {
+    try {
+      const { error } = await supabase
+        .from("rooms")
+        .delete()
+        .eq("id", id);
 
-  const getDepartmentName = (departmentId?: string) => {
-    if (!departmentId) return "General";
-    return departments.find(d => d.id === departmentId)?.name || "Unknown";
+      if (error) throw error;
+
+      toast({
+        title: "Room deleted",
+        description: "The room has been removed.",
+      });
+
+      loadData();
+    } catch (error: any) {
+      toast({
+        variant: "destructive",
+        title: "Error deleting room",
+        description: error.message,
+      });
+    }
   };
 
   const getTypeColor = (type: Room['type']) => {
@@ -173,52 +234,67 @@ const Rooms = () => {
                     </SelectContent>
                   </Select>
                 </div>
-                <Button type="submit" className="w-full">Add Room</Button>
+                <Button type="submit" className="w-full" disabled={isSubmitting}>
+                  {isSubmitting ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Adding...
+                    </>
+                  ) : (
+                    "Add Room"
+                  )}
+                </Button>
               </form>
             </DialogContent>
           </Dialog>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {rooms.map((room) => (
-            <Card key={room.id} className="shadow-card hover:shadow-elevated transition-all">
-              <CardHeader>
-                <CardTitle className="flex items-center justify-between">
-                  <span>{room.name}</span>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => handleDelete(room.id)}
-                    className="text-destructive hover:text-destructive hover:bg-destructive/10"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </Button>
-                </CardTitle>
-                <CardDescription className={getTypeColor(room.type)}>
-                  {room.type.charAt(0).toUpperCase() + room.type.slice(1)}
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-2 text-sm">
-                  <div className="flex items-center gap-2 text-muted-foreground">
-                    <Users className="w-4 h-4" />
-                    Capacity: {room.capacity}
+        {isLoading ? (
+          <div className="flex justify-center items-center py-12">
+            <Loader2 className="w-8 h-8 animate-spin text-primary" />
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {rooms.map((room) => (
+              <Card key={room.id} className="shadow-card hover:shadow-elevated transition-all">
+                <CardHeader>
+                  <CardTitle className="flex items-center justify-between">
+                    <span>{room.name}</span>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => handleDelete(room.id)}
+                      className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </Button>
+                  </CardTitle>
+                  <CardDescription className={getTypeColor(room.type)}>
+                    {room.type.charAt(0).toUpperCase() + room.type.slice(1)}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-2 text-sm">
+                    <div className="flex items-center gap-2 text-muted-foreground">
+                      <Users className="w-4 h-4" />
+                      Capacity: {room.capacity}
+                    </div>
+                    <div className="text-muted-foreground">
+                      {room.departments?.name || "General"}
+                    </div>
                   </div>
-                  <div className="text-muted-foreground">
-                    {getDepartmentName(room.departmentId)}
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
+                </CardContent>
+              </Card>
+            ))}
 
-          {rooms.length === 0 && (
-            <Card className="col-span-full p-12 text-center border-dashed">
-              <DoorOpen className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
-              <p className="text-muted-foreground">No rooms yet. Add your first room to get started.</p>
-            </Card>
-          )}
-        </div>
+            {rooms.length === 0 && (
+              <Card className="col-span-full p-12 text-center border-dashed">
+                <DoorOpen className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
+                <p className="text-muted-foreground">No rooms yet. Add your first room to get started.</p>
+              </Card>
+            )}
+          </div>
+        )}
       </main>
     </div>
   );
